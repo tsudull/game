@@ -218,3 +218,504 @@ textarea#submitText {
     width: auto;
   }
   .arrow-line {
+    transform: rotate(90deg);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<h1>商品製造ゲーム</h1>
+
+<div class="card">
+  今から商品製造ゲームを行います。<br>
+  材料購入・製造・販売の３部門に人を配置して、「できるだけたくさんの商品を販売する」ゲームです。<br>
+  配置する人員は４人です。どの部門に何人配置しても構いません（０人でもOK）。<br>
+  材料購入 ⇒ 製造 ⇒ 販売 の順でサイコロを振ります。<br>
+  これを５ターン行って１プレイ終了です。<b>全３回プレイし、ベストスコアを課題として提出してください。</b>
+</div>
+
+<div class="card status-bar">
+  <div>
+    <div>プレイ回数：<span class="highlight" id="playCount">0</span> / 3 回</div>
+    <div class="score-badges" id="scoreBadges"></div>
+  </div>
+  <div>
+    ベストスコア：<span class="highlight" id="bestScore">-</span>
+  </div>
+</div>
+
+<!-- 全3回終了後に表示される提出用カード -->
+<div class="card submission-card hidden" id="submissionCard">
+  <h2 style="margin-top:0; color:#0078d4;">課題提出用レポート（全3回完了）</h2>
+  <p>学籍番号と氏名を入力し、下のボタンから結果をコピーして提出してください（必要に応じてこの画面をスクリーンショット保存してください）。</p>
+
+  <div class="student-form">
+    <label>
+      学籍番号
+      <input type="text" id="studentId" placeholder="例：2600001" oninput="updateStudentInfo()">
+    </label>
+    <label>
+      氏名
+      <input type="text" id="studentName" placeholder="例：北陸 太郎" oninput="updateStudentInfo()">
+    </label>
+  </div>
+
+  <div id="bestSummary"></div>
+  <div id="bestHistoryContainer" style="margin-top:12px;"></div>
+
+  <div style="margin-top:14px;">
+    <b>提出用テキスト：</b>
+    <textarea id="submitText" readonly></textarea>
+    <button onclick="copySubmission()">提出用テキストをコピー</button>
+    <div class="copy-msg" id="copyMsg"></div>
+  </div>
+</div>
+
+<div class="card" id="totalBox">
+  合計人数：<span id="total">0</span> / 4
+</div>
+
+<div class="card">
+  現在のプレイ：<b id="currentPlayLabel">1回目</b> ／ ターン：<span id="turn">1</span> / 5
+</div>
+
+<div class="card">
+  <div class="flow">
+
+    <!-- 材料購入 -->
+    <div class="section">
+      <b>材料購入</b>
+      <table>
+        <tr><td>人数</td></tr>
+        <tr><td><input type="number" id="p" value="0" min="0" max="4" step="1" oninput="updateTotal()"></td></tr>
+        <tr><td>今回</td></tr>
+        <tr><td id="inRaw">-</td></tr>
+        <tr><td>原材料</td></tr>
+        <tr><td id="raw">0</td></tr>
+      </table>
+    </div>
+
+    <div class="arrow">
+      <div>原材料</div>
+      <div class="arrow-line">➡</div>
+    </div>
+
+    <!-- 製造 -->
+    <div class="section">
+      <b>製造</b>
+      <table>
+        <tr><td>人数</td></tr>
+        <tr><td><input type="number" id="m" value="0" min="0" max="4" step="1" oninput="updateTotal()"></td></tr>
+        <tr><td>今回</td></tr>
+        <tr><td id="make">-</td></tr>
+        <tr><td>製品</td></tr>
+        <tr><td id="product">0</td></tr>
+      </table>
+    </div>
+
+    <div class="arrow">
+      <div>製品</div>
+      <div class="arrow-line">➡</div>
+    </div>
+
+    <!-- 販売 -->
+    <div class="section">
+      <b>販売</b>
+      <table>
+        <tr><td>人数</td></tr>
+        <tr><td><input type="number" id="s" value="0" min="0" max="4" step="1" oninput="updateTotal()"></td></tr>
+        <tr><td>今回</td></tr>
+        <tr><td id="sell">-</td></tr>
+        <tr><td>累計販売</td></tr>
+        <tr><td class="highlight" id="sold">0</td></tr>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div class="card">
+  <button id="playBtn" onclick="play()">サイコロを振る</button>
+</div>
+
+<div class="card" id="finalResult">
+  ５ターン終了後に成績が表示されます
+</div>
+
+<script>
+// 授業・年度ごとに変えると、前回の保存データと分離できます
+const STORAGE_KEY = "seizo_game_assign_2026_v2";
+const MAX_PLAYS = 3;
+const MAX_TURN = 5;
+
+function createDefaultInProgress() {
+  return {
+    turn: 1,
+    raw: 0,
+    product: 0,
+    sold: 0,
+    inRaw: "-",
+    make: "-",
+    sell: "-",
+    history: [],
+    turnEnded: false
+  };
+}
+
+function createInitialState() {
+  return {
+    studentId: "",
+    studentName: "",
+    completedPlays: 0,
+    scores: [],
+    bestScore: null,
+    bestPlayNo: null,
+    finishedAt: null,
+    inProgress: createDefaultInProgress()
+  };
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return createInitialState();
+    const parsed = JSON.parse(saved);
+    if (typeof parsed.completedPlays !== "number" || !Array.isArray(parsed.scores) || !parsed.inProgress) {
+      return createInitialState();
+    }
+    return parsed;
+  } catch (e) {
+    return createInitialState();
+  }
+}
+
+let state = loadState();
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // プライベートモード等で保存不可でも動作を継続
+  }
+}
+
+function parseCount(id) {
+  const val = document.getElementById(id).value.trim();
+  if (val === "" || !/^\d+$/.test(val)) return NaN;
+  return parseInt(val, 10);
+}
+
+function updateTotal() {
+  const p = parseCount("p");
+  const m = parseCount("m");
+  const s = parseCount("s");
+  const el = document.getElementById("total");
+
+  if (Number.isNaN(p) || Number.isNaN(m) || Number.isNaN(s)) {
+    el.innerText = "エラー";
+    el.style.color = "red";
+    return;
+  }
+
+  const total = p + m + s;
+  el.innerText = total;
+  el.style.color = (total === 4) ? "black" : "red";
+}
+
+function dice(n) {
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += Math.floor(Math.random() * 6) + 1;
+  }
+  return sum;
+}
+
+function buildHistoryTable(historyList) {
+  let table = "<table class='history-table'><tr><th>ターン</th><th>配置(仕/製/販)</th><th>仕入</th><th>製造</th><th>販売</th><th>ボトルネック</th></tr>";
+
+  historyList.forEach(h => {
+    const min = Math.min(h.inRaw, h.make, h.sell);
+    const styleIn = h.inRaw === min ? "class='red'" : "";
+    const styleMake = h.make === min ? "class='red'" : "";
+    const styleSell = h.sell === min ? "class='red'" : "";
+
+    const bottleneck = [];
+    if (h.inRaw === min) bottleneck.push("仕入");
+    if (h.make === min) bottleneck.push("製造");
+    if (h.sell === min) bottleneck.push("販売");
+
+    table += `
+      <tr>
+        <td>${h.turn}</td>
+        <td>${h.p}/${h.m}/${h.s}</td>
+        <td ${styleIn}>${h.inRaw}</td>
+        <td ${styleMake}>${h.make}</td>
+        <td ${styleSell}>${h.sell}</td>
+        <td style="color:red;font-weight:bold;">${bottleneck.join("・")}</td>
+      </tr>`;
+  });
+
+  table += "</table>";
+  return table;
+}
+
+// 提出テキストの簡易改ざんチェック用コード
+function makeVerifyCode(studentId, bestScore, scores) {
+  const rawStr = `${studentId}|${bestScore}|${scores.map(x => x.sold).join(",")}|${state.finishedAt || ""}|SG26`;
+  let hash = 2166136261;
+  for (let i = 0; i < rawStr.length; i++) {
+    hash ^= rawStr.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).toUpperCase().padStart(7, "0");
+}
+
+function buildSubmissionText() {
+  const bestRecord = state.scores.find(x => x.playNo === state.bestPlayNo);
+  const scoreListText = state.scores.map(x => `${x.playNo}回目:${x.sold}`).join(" / ");
+  const bestPattern = bestRecord
+    ? bestRecord.history.map(h => `T${h.turn}(${h.p}-${h.m}-${h.s})`).join(" → ")
+    : "";
+  const code = makeVerifyCode(state.studentId, state.bestScore, state.scores);
+
+  return [
+    "【商品製造ゲーム 課題提出】",
+    `学籍番号：${state.studentId || "（未入力）"}`,
+    `氏名：${state.studentName || "（未入力）"}`,
+    `ベストスコア：${state.bestScore}（${state.bestPlayNo}回目）`,
+    `全3回スコア：${scoreListText}`,
+    `ベスト回の配置：${bestPattern}`,
+    `完了日時：${state.finishedAt || "-"}`,
+    `確認コード：${code}`
+  ].join("\n");
+}
+
+function updateStudentInfo() {
+  state.studentId = document.getElementById("studentId").value.trim();
+  state.studentName = document.getElementById("studentName").value.trim();
+  saveState();
+  if (state.completedPlays >= MAX_PLAYS) {
+    document.getElementById("submitText").value = buildSubmissionText();
+  }
+}
+
+function play() {
+  if (state.completedPlays >= MAX_PLAYS || state.inProgress.turnEnded) return;
+
+  const p = parseCount("p");
+  const m = parseCount("m");
+  const s = parseCount("s");
+
+  if (Number.isNaN(p) || Number.isNaN(m) || Number.isNaN(s) || p + m + s !== 4) {
+    alert("各部門に0〜4の整数を入力し、人数の合計を4人にしてください。");
+    return;
+  }
+
+  const g = state.inProgress;
+
+  const inRaw = dice(p);
+  g.raw += inRaw;
+
+  const makeCap = dice(m);
+  const make = Math.min(g.raw, makeCap);
+  g.raw -= make;
+  g.product += make;
+
+  const sellCap = dice(s);
+  const sell = Math.min(g.product, sellCap);
+  g.product -= sell;
+  g.sold += sell;
+
+  g.inRaw = inRaw;
+  g.make = make;
+  g.sell = sell;
+
+  g.history.push({ turn: g.turn, p, m, s, inRaw, make, sell });
+
+  if (g.turn >= MAX_TURN) {
+    g.turnEnded = true;
+    state.completedPlays += 1;
+
+    state.scores.push({
+      playNo: state.completedPlays,
+      sold: g.sold,
+      history: g.history.map(item => ({ ...item }))
+    });
+
+    if (state.bestScore === null || g.sold > state.bestScore) {
+      state.bestScore = g.sold;
+      state.bestPlayNo = state.completedPlays;
+    }
+
+    if (state.completedPlays >= MAX_PLAYS) {
+      state.finishedAt = new Date().toLocaleString("ja-JP");
+    }
+  } else {
+    g.turn += 1;
+  }
+
+  saveState();
+  render();
+}
+
+function startNextPlay() {
+  if (state.completedPlays >= MAX_PLAYS || !state.inProgress.turnEnded) return;
+
+  state.inProgress = createDefaultInProgress();
+  document.getElementById("p").value = 0;
+  document.getElementById("m").value = 0;
+  document.getElementById("s").value = 0;
+
+  saveState();
+  updateTotal();
+  render();
+}
+
+function resetAllPlays() {
+  if (!confirm("これまでのスコアと記録をリセットして、1回目からやり直しますか？")) {
+    return;
+  }
+
+  const prevId = state.studentId;
+  const prevName = state.studentName;
+
+  state = createInitialState();
+  state.studentId = prevId;
+  state.studentName = prevName;
+
+  document.getElementById("p").value = 0;
+  document.getElementById("m").value = 0;
+  document.getElementById("s").value = 0;
+  document.getElementById("copyMsg").innerText = "";
+
+  saveState();
+  updateTotal();
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function copySubmission() {
+  if (!state.studentId || !state.studentName) {
+    alert("学籍番号と氏名を入力してからコピーしてください。");
+    return;
+  }
+
+  const textarea = document.getElementById("submitText");
+  const text = textarea.value;
+  const msgEl = document.getElementById("copyMsg");
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      msgEl.innerText = "提出用テキストをコピーしました！そのまま提出欄に貼り付けてください。";
+    }).catch(() => {
+      fallbackCopy(textarea, msgEl);
+    });
+  } else {
+    fallbackCopy(textarea, msgEl);
+  }
+}
+
+function fallbackCopy(textarea, msgEl) {
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    msgEl.innerText = "提出用テキストをコピーしました！そのまま提出欄に貼り付けてください。";
+  } catch (e) {
+    msgEl.innerText = "自動コピーに失敗しました。枠内のテキストを手動で選択してコピーしてください。";
+  }
+}
+
+function render() {
+  const g = state.inProgress;
+
+  // ステータスバー
+  document.getElementById("playCount").innerText = state.completedPlays;
+  document.getElementById("bestScore").innerText = state.bestScore !== null ? state.bestScore : "-";
+
+  const badgesEl = document.getElementById("scoreBadges");
+  badgesEl.innerHTML = state.scores.map(item => {
+    const isBest = item.playNo === state.bestPlayNo;
+    return `<span class="badge ${isBest ? "best" : ""}">${item.playNo}回目：${item.sold}${isBest ? " ★ベスト" : ""}</span>`;
+  }).join("");
+
+  // 現在プレイ・ターン表示
+  const displayPlayNo = g.turnEnded
+    ? state.completedPlays
+    : Math.min(state.completedPlays + 1, MAX_PLAYS);
+  document.getElementById("currentPlayLabel").innerText = `${displayPlayNo}回目`;
+  document.getElementById("turn").innerText = g.turnEnded ? `${MAX_TURN}（終了）` : g.turn;
+
+  // 盤面の数値
+  document.getElementById("inRaw").innerText = g.inRaw;
+  document.getElementById("make").innerText = g.make;
+  document.getElementById("sell").innerText = g.sell;
+  document.getElementById("raw").innerText = g.raw;
+  document.getElementById("product").innerText = g.product;
+  document.getElementById("sold").innerText = g.sold;
+
+  // 入力欄・ボタン制御
+  const locked = state.completedPlays >= MAX_PLAYS || g.turnEnded;
+  document.getElementById("p").disabled = locked;
+  document.getElementById("m").disabled = locked;
+  document.getElementById("s").disabled = locked;
+
+  const playBtn = document.getElementById("playBtn");
+  playBtn.disabled = locked;
+  if (state.completedPlays >= MAX_PLAYS) {
+    playBtn.innerText = "全3回のプレイが終了しました";
+  } else if (g.turnEnded) {
+    playBtn.innerText = "このプレイは終了しました（下のボタンから次へ）";
+  } else {
+    playBtn.innerText = "サイコロを振る";
+  }
+
+  // 各プレイ終了後の振り返り結果
+  const finalResultEl = document.getElementById("finalResult");
+  if (g.turnEnded) {
+    const remaining = MAX_PLAYS - state.completedPlays;
+    const nextButtonHtml = remaining > 0
+      ? `<br><button class="next-btn" onclick="startNextPlay()">次のプレイを始める（${state.completedPlays + 1}回目 / 残り${remaining}回）</button>`
+      : `<br><p style="font-weight:bold; color:#0078d4;">全3回のプレイが完了しました。ページ上部の「課題提出用レポート」から提出してください。</p>` +
+        `<button class="reset-btn" onclick="resetAllPlays()">もう一度最初からプレイする</button>`;
+
+    finalResultEl.innerHTML =
+      `🎉 ${state.completedPlays}回目の成績：最終販売数 <span class="highlight">${g.sold}</span><br><br>` +
+      `<b>振り返り（ボトルネック分析）</b><br><br>` +
+      buildHistoryTable(g.history) +
+      nextButtonHtml;
+  } else {
+    finalResultEl.innerHTML = "５ターン終了後に成績が表示されます";
+  }
+
+  // 全3回終了後の課題提出用カード
+  const submissionCard = document.getElementById("submissionCard");
+  if (state.completedPlays >= MAX_PLAYS) {
+    submissionCard.classList.remove("hidden");
+    const bestRecord = state.scores.find(x => x.playNo === state.bestPlayNo);
+
+    document.getElementById("bestSummary").innerHTML =
+      `🏆 ベストスコア：<span class="highlight">${state.bestScore}</span>（${state.bestPlayNo}回目のプレイ）`;
+
+    if (bestRecord) {
+      document.getElementById("bestHistoryContainer").innerHTML =
+        `<b>ベストスコア時の配置・ボトルネック分析</b>` + buildHistoryTable(bestRecord.history);
+    }
+
+    document.getElementById("submitText").value = buildSubmissionText();
+  } else {
+    submissionCard.classList.add("hidden");
+  }
+}
+
+// 初期読み込み時に入力済みの学生情報を反映
+document.getElementById("studentId").value = state.studentId;
+document.getElementById("studentName").value = state.studentName;
+updateTotal();
+render();
+</script>
+
+</body>
+</html>
