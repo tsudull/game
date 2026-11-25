@@ -127,6 +127,7 @@ button.next-btn:hover:not(:disabled) {
 
 button.reset-btn {
   background: #666;
+  margin-top: 16px;
 }
 
 button.reset-btn:hover:not(:disabled) {
@@ -177,7 +178,8 @@ button.reset-btn:hover:not(:disabled) {
   margin: 12px 0;
 }
 
-.student-form label {
+.student-form label,
+.reflection-box label {
   display: flex;
   flex-direction: column;
   font-size: 15px;
@@ -185,10 +187,34 @@ button.reset-btn:hover:not(:disabled) {
   gap: 4px;
 }
 
+.reflection-box {
+  margin-top: 16px;
+}
+
+.reflection-hint {
+  font-size: 14px;
+  font-weight: normal;
+  color: #555;
+  margin: 2px 0 6px;
+}
+
+textarea#reflection {
+  width: 100%;
+  box-sizing: border-box;
+  height: 110px;
+  font-family: sans-serif;
+  font-size: 16px;
+  padding: 10px;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #fff;
+  resize: vertical;
+}
+
 textarea#submitText {
   width: 100%;
   box-sizing: border-box;
-  height: 170px;
+  height: 220px;
   font-family: monospace;
   font-size: 14px;
   padding: 10px;
@@ -233,7 +259,7 @@ textarea#submitText {
   材料購入・製造・販売の３部門に人を配置して、「できるだけたくさんの商品を販売する」ゲームです。<br>
   配置する人員は４人です。どの部門に何人配置しても構いません（０人でもOK）。<br>
   材料購入 ⇒ 製造 ⇒ 販売 の順でサイコロを振ります。<br>
-  これを５ターン行って１プレイ終了です。<b>全３回プレイし、ベストスコアを課題として提出してください。</b>
+  これを５ターン行って１プレイ終了です。<b>全３回プレイし、ベストスコアとふりかえりを課題として提出してください。</b>
 </div>
 
 <div class="card status-bar">
@@ -243,33 +269,6 @@ textarea#submitText {
   </div>
   <div>
     ベストスコア：<span class="highlight" id="bestScore">-</span>
-  </div>
-</div>
-
-<!-- 全3回終了後に表示される提出用カード -->
-<div class="card submission-card hidden" id="submissionCard">
-  <h2 style="margin-top:0; color:#0078d4;">課題提出用レポート（全3回完了）</h2>
-  <p>学籍番号と氏名を入力し、下のボタンから結果をコピーして提出してください（必要に応じてこの画面をスクリーンショット保存してください）。</p>
-
-  <div class="student-form">
-    <label>
-      学籍番号
-      <input type="text" id="studentId" placeholder="例：2600001" oninput="updateStudentInfo()">
-    </label>
-    <label>
-      氏名
-      <input type="text" id="studentName" placeholder="例：北陸 太郎" oninput="updateStudentInfo()">
-    </label>
-  </div>
-
-  <div id="bestSummary"></div>
-  <div id="bestHistoryContainer" style="margin-top:12px;"></div>
-
-  <div style="margin-top:14px;">
-    <b>提出用テキスト：</b>
-    <textarea id="submitText" readonly></textarea>
-    <button onclick="copySubmission()">提出用テキストをコピー</button>
-    <div class="copy-msg" id="copyMsg"></div>
   </div>
 </div>
 
@@ -344,6 +343,45 @@ textarea#submitText {
   ５ターン終了後に成績が表示されます
 </div>
 
+<!-- 全3回終了後に結果の下へ表示される提出用カード -->
+<div class="card submission-card hidden" id="submissionCard">
+  <h2 style="margin-top:0; color:#0078d4;">課題提出用レポート（全3回完了）</h2>
+  <p>学籍番号・氏名・ふりかえりを入力し、下のボタンから結果をコピーして提出してください。</p>
+
+  <div class="student-form">
+    <label>
+      学籍番号
+      <input type="text" id="studentId" placeholder="例：2600001" oninput="updateStudentInfo()">
+    </label>
+    <label>
+      氏名
+      <input type="text" id="studentName" placeholder="例：北陸 太郎" oninput="updateStudentInfo()">
+    </label>
+  </div>
+
+  <div id="bestSummary"></div>
+  <div id="bestHistoryContainer" style="margin-top:12px;"></div>
+
+  <div class="reflection-box">
+    <label for="reflection">
+      ふりかえり（必須）
+      <span class="reflection-hint">
+        どのような人員配置を意識したか、ボトルネックや在庫に対してどう工夫してうまくいったか（またはうまくいかなかったか）を記入してください。
+      </span>
+      <textarea id="reflection" placeholder="例：序盤は原材料を貯めるために仕入に多めに配置し、後半は在庫が余らないよう販売を増やしたことでスコアが伸びた。" oninput="updateStudentInfo()"></textarea>
+    </label>
+  </div>
+
+  <div style="margin-top:14px;">
+    <b>提出用テキスト：</b>
+    <textarea id="submitText" readonly></textarea>
+    <button onclick="copySubmission()">提出用テキストをコピー</button>
+    <div class="copy-msg" id="copyMsg"></div>
+  </div>
+
+  <button class="reset-btn" onclick="resetAllPlays()">もう一度最初からプレイする</button>
+</div>
+
 <script>
 // 授業・年度ごとに変えると、前回の保存データと分離できます
 const STORAGE_KEY = "seizo_game_assign_2026_v2";
@@ -368,6 +406,7 @@ function createInitialState() {
   return {
     studentId: "",
     studentName: "",
+    reflection: "",
     completedPlays: 0,
     scores: [],
     bestScore: null,
@@ -384,6 +423,9 @@ function loadState() {
     const parsed = JSON.parse(saved);
     if (typeof parsed.completedPlays !== "number" || !Array.isArray(parsed.scores) || !parsed.inProgress) {
       return createInitialState();
+    }
+    if (typeof parsed.reflection !== "string") {
+      parsed.reflection = "";
     }
     return parsed;
   } catch (e) {
@@ -487,6 +529,8 @@ function buildSubmissionText() {
     `ベストスコア：${state.bestScore}（${state.bestPlayNo}回目）`,
     `全3回スコア：${scoreListText}`,
     `ベスト回の配置：${bestPattern}`,
+    "【ふりかえり】",
+    `${state.reflection || "（未入力）"}`,
     `完了日時：${state.finishedAt || "-"}`,
     `確認コード：${code}`
   ].join("\n");
@@ -495,6 +539,7 @@ function buildSubmissionText() {
 function updateStudentInfo() {
   state.studentId = document.getElementById("studentId").value.trim();
   state.studentName = document.getElementById("studentName").value.trim();
+  state.reflection = document.getElementById("reflection").value.trim();
   saveState();
   if (state.completedPlays >= MAX_PLAYS) {
     document.getElementById("submitText").value = buildSubmissionText();
@@ -534,6 +579,8 @@ function play() {
 
   g.history.push({ turn: g.turn, p, m, s, inRaw, make, sell });
 
+  let justCompletedAll = false;
+
   if (g.turn >= MAX_TURN) {
     g.turnEnded = true;
     state.completedPlays += 1;
@@ -551,6 +598,7 @@ function play() {
 
     if (state.completedPlays >= MAX_PLAYS) {
       state.finishedAt = new Date().toLocaleString("ja-JP");
+      justCompletedAll = true;
     }
   } else {
     g.turn += 1;
@@ -558,6 +606,10 @@ function play() {
 
   saveState();
   render();
+
+  if (justCompletedAll) {
+    document.getElementById("finalResult").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function startNextPlay() {
@@ -588,6 +640,7 @@ function resetAllPlays() {
   document.getElementById("p").value = 0;
   document.getElementById("m").value = 0;
   document.getElementById("s").value = 0;
+  document.getElementById("reflection").value = "";
   document.getElementById("copyMsg").innerText = "";
 
   saveState();
@@ -599,6 +652,11 @@ function resetAllPlays() {
 function copySubmission() {
   if (!state.studentId || !state.studentName) {
     alert("学籍番号と氏名を入力してからコピーしてください。");
+    return;
+  }
+  if (!state.reflection) {
+    alert("ふりかえりを入力してからコピーしてください。");
+    document.getElementById("reflection").focus();
     return;
   }
 
@@ -678,8 +736,7 @@ function render() {
     const remaining = MAX_PLAYS - state.completedPlays;
     const nextButtonHtml = remaining > 0
       ? `<br><button class="next-btn" onclick="startNextPlay()">次のプレイを始める（${state.completedPlays + 1}回目 / 残り${remaining}回）</button>`
-      : `<br><p style="font-weight:bold; color:#0078d4;">全3回のプレイが完了しました。ページ上部の「課題提出用レポート」から提出してください。</p>` +
-        `<button class="reset-btn" onclick="resetAllPlays()">もう一度最初からプレイする</button>`;
+      : `<br><p style="font-weight:bold; color:#0078d4; margin-bottom:0;">全3回のプレイが完了しました。下の「課題提出用レポート」にふりかえりを記入して提出してください。</p>`;
 
     finalResultEl.innerHTML =
       `🎉 ${state.completedPlays}回目の成績：最終販売数 <span class="highlight">${g.sold}</span><br><br>` +
@@ -710,9 +767,10 @@ function render() {
   }
 }
 
-// 初期読み込み時に入力済みの学生情報を反映
+// 初期読み込み時に入力済みの学生情報・ふりかえりを反映
 document.getElementById("studentId").value = state.studentId;
 document.getElementById("studentName").value = state.studentName;
+document.getElementById("reflection").value = state.reflection || "";
 updateTotal();
 render();
 </script>
